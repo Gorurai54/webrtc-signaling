@@ -6,35 +6,53 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: {
-        origin: "*"
-    }
+    cors: { origin: "*" }
 });
 
 const users = {};
 
+// CONNECT
 io.on("connection", (socket) => {
+
     console.log("Connected:", socket.id);
 
+    // REGISTER USER
     socket.on("register", (userId) => {
         users[userId] = socket.id;
+        console.log("Registered:", userId, socket.id);
     });
 
-    socket.on("call-user", ({ to, offer }) => {
+    // CALL USER
+    socket.on("call-user", ({ to, offer, from, callerName }) => {
+
         const socketId = users[to];
+
         if (socketId) {
-            io.to(socketId).emit("incoming-call", { from: socket.id, offer });
+            io.to(socketId).emit("incoming-call", {
+                callerUid: from,
+                callerName: callerName || "Unknown",
+                offer: offer
+            });
         }
     });
 
+    // CALL ACCEPTED
     socket.on("call-accepted", ({ to, answer }) => {
-        io.to(to).emit("call-accepted", answer);
+        const socketId = users[to];
+        if (socketId) {
+            io.to(socketId).emit("call-accepted", answer);
+        }
     });
 
+    // ICE
     socket.on("ice-candidate", ({ to, candidate }) => {
-        io.to(to).emit("ice-candidate", candidate);
+        const socketId = users[to];
+        if (socketId) {
+            io.to(socketId).emit("ice-candidate", candidate);
+        }
     });
 
+    // DISCONNECT
     socket.on("disconnect", () => {
         for (let id in users) {
             if (users[id] === socket.id) {
