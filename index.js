@@ -89,16 +89,18 @@ io.on("connection", (socket) => {
 
     // ICE CANDIDATE
     socket.on("ice-candidate", ({ to, candidate }) => {
+socket.on("ice-candidate", ({ to, sdpMid, sdpMLineIndex, candidate }) => {
 
-        const socketId = users[to];
+    const socketId = users[to];
 
-        if (socketId) {
-
-            io.to(socketId).emit("ice-candidate", {
-                candidate: candidate
-            });
-        }
-    });
+    if (socketId) {
+        io.to(socketId).emit("ice-candidate", {
+            sdpMid,
+            sdpMLineIndex,
+            candidate
+        });
+    }
+});
 
     // DISCONNECT
     socket.on("disconnect", () => {
