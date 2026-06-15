@@ -6,57 +6,119 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: { origin: "*" }
+    cors: {
+        origin: "*"
+    }
 });
 
 const users = {};
 
-// CONNECT
+// CONNECTION
 io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
 
-    // REGISTER USER
+    // REGISTER
     socket.on("register", (userId) => {
+
         users[userId] = socket.id;
-        console.log("Registered:", userId, socket.id);
+
+        console.log(
+            "Registered User:",
+            userId,
+            "Socket:",
+            socket.id
+        );
     });
 
     // CALL USER
     socket.on("call-user", ({ to, offer, from, callerName }) => {
 
+        console.log(
+            "CALL REQUEST",
+            "FROM:", from,
+            "TO:", to
+        );
+
         const socketId = users[to];
 
         if (socketId) {
+
             io.to(socketId).emit("incoming-call", {
                 callerUid: from,
                 callerName: callerName || "Unknown",
                 offer: offer
             });
+
+            console.log(
+                "INCOMING CALL SENT TO:",
+                to
+            );
+
+        } else {
+
+            console.log(
+                "USER NOT REGISTERED:",
+                to
+            );
         }
     });
 
     // CALL ACCEPTED
     socket.on("call-accepted", ({ to, answer }) => {
+
+        console.log(
+            "CALL ACCEPTED ->",
+            to
+        );
+
         const socketId = users[to];
+
         if (socketId) {
-            io.to(socketId).emit("call-accepted", answer);
+
+            io.to(socketId).emit("call-accepted", {
+                answer: answer
+            });
+
+            console.log(
+                "ANSWER SENT TO:",
+                to
+            );
         }
     });
 
-    // ICE
+    // ICE CANDIDATE
     socket.on("ice-candidate", ({ to, candidate }) => {
+
         const socketId = users[to];
+
         if (socketId) {
-            io.to(socketId).emit("ice-candidate", candidate);
+
+            io.to(socketId).emit("ice-candidate", {
+                candidate: candidate
+            });
         }
     });
 
     // DISCONNECT
     socket.on("disconnect", () => {
-        for (let id in users) {
-            if (users[id] === socket.id) {
-                delete users[id];
+
+        console.log(
+            "Disconnected:",
+            socket.id
+        );
+
+        for (const uid in users) {
+
+            if (users[uid] === socket.id) {
+
+                delete users[uid];
+
+                console.log(
+                    "Removed User:",
+                    uid
+                );
+
                 break;
             }
         }
