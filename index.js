@@ -86,6 +86,12 @@ io.on("connection", (socket) => {
             );
         }
     });
+    socket.on("ice-candidate", (data) => {
+
+    console.log("ICE HIT SERVER:", data);
+    console.log("CURRENT USERS MAP:", users);
+    console.log("TARGET SOCKET:", users[data.to]);
+});
 
     // ICE CANDIDATE
     socket.on("ice-candidate", ({ to, candidate }) => {
