@@ -13,7 +13,6 @@ const io = new Server(server, {
 
 const users = {};
 
-// CONNECTION
 io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
@@ -34,12 +33,6 @@ io.on("connection", (socket) => {
     // CALL USER
     socket.on("call-user", ({ to, offer, from, callerName }) => {
 
-        console.log(
-            "CALL REQUEST",
-            "FROM:", from,
-            "TO:", to
-        );
-
         const socketId = users[to];
 
         if (socketId) {
@@ -49,28 +42,11 @@ io.on("connection", (socket) => {
                 callerName: callerName || "Unknown",
                 offer: offer
             });
-
-            console.log(
-                "INCOMING CALL SENT TO:",
-                to
-            );
-
-        } else {
-
-            console.log(
-                "USER NOT REGISTERED:",
-                to
-            );
         }
     });
 
     // CALL ACCEPTED
     socket.on("call-accepted", ({ to, answer }) => {
-
-        console.log(
-            "CALL ACCEPTED ->",
-            to
-        );
 
         const socketId = users[to];
 
@@ -79,42 +55,57 @@ io.on("connection", (socket) => {
             io.to(socketId).emit("call-accepted", {
                 answer: answer
             });
-
-            console.log(
-                "ANSWER SENT TO:",
-                to
-            );
         }
     });
-    socket.on("ice-candidate", (data) => {
 
-    console.log("ICE HIT SERVER:", data);
-    console.log("CURRENT USERS MAP:", users);
-    console.log("TARGET SOCKET:", users[data.to]);
-});
+    // CALL REJECTED
+    socket.on("call-rejected", ({ to }) => {
+
+        const socketId = users[to];
+
+        if (socketId) {
+
+            io.to(socketId).emit("call-rejected");
+        }
+    });
+
+    // END CALL
+    socket.on("end-call", ({ to }) => {
+
+        const socketId = users[to];
+
+        if (socketId) {
+
+            io.to(socketId).emit("end-call");
+        }
+    });
 
     // ICE CANDIDATE
-    socket.on("ice-candidate", ({ to, candidate }) => {
-socket.on("ice-candidate", ({ to, sdpMid, sdpMLineIndex, candidate }) => {
+    socket.on("ice-candidate", ({
+        to,
+        sdpMid,
+        sdpMLineIndex,
+        candidate
+    }) => {
 
-    const socketId = users[to];
+        console.log("ICE HIT SERVER");
 
-    if (socketId) {
-        io.to(socketId).emit("ice-candidate", {
-            sdpMid,
-            sdpMLineIndex,
-            candidate
-        });
-    }
-});
+        const socketId = users[to];
+
+        if (socketId) {
+
+            io.to(socketId).emit("ice-candidate", {
+                sdpMid,
+                sdpMLineIndex,
+                candidate
+            });
+        }
+    });
 
     // DISCONNECT
     socket.on("disconnect", () => {
 
-        console.log(
-            "Disconnected:",
-            socket.id
-        );
+        console.log("Disconnected:", socket.id);
 
         for (const uid in users) {
 
