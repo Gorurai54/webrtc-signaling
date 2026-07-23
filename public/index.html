@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser WebRTC Audio Call</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; padding: 20px; background: #f4f4f9; }
+        .card { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 350px; }
+        input, button { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; border-radius: 5px; border: 1px solid #ccc; }
+        button { background: #007bff; color: white; font-weight: bold; cursor: pointer; border: none; }
+        .btn-green { background: #28a745; }
+        .btn-red { background: #dc3545; }
+        #status { font-weight: bold; margin-bottom: 10px; color: #555; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h3>Audio Call Test</h3>
+    <div id="status">Status: Disconnected</div>
+
+    <div>
+        <label>Your User ID:</label>
+        <input type="text" id="myUid" placeholder="e.g. user1">
+        <button onclick="registerUser()">Register</button>
+    </div>
+
+    <hr>
+
+    <div>
+        <label>Target User ID:</label>
+        <input type="text" id="targetUid" placeholder="e.g. user2">
+        <button class="btn-green" onclick="startCall()">Call User</button>
+    </div>
+
+    <div id="incomingSection" style="display:none; margin-top:15px;">
+        <p>Incoming Call...</p>
+        <button class="btn-green" onclick="acceptCall()">Accept Call</button>
+    </div>
+
+    <button class="btn-red" id="btnEnd" onclick="endCall()" style="display:none; margin-top:10px;">End Call</button>
+
+    <audio id="remoteAudio" autoplay playsinline></audio>
+</div>
+
+<script>
+    let socket;
+    let peerConnection;
+    let remoteUserId = null;
+    let pendingOffer = null;
+    let localStream = null;
+
+    const rtcConfig = {
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
+
+    function registerUser() {
+        const myUid = document.getElementById('myUid').value.trim();
+        if (!myUid) return alert("Enter your ID!");
+
+        socket = io();
+
+        socket.on('connect', () => {
+            document.getElementById('status').innerText = "Connected as: " + myUid;
+            socket.emit('register', myUid);
+        });
+
+        socket.on('incoming-call', data => {
+            remoteUserId = data.callerUid;
+            pendingOffer = data.offer;
+            document.getElementById('incomingSection').style.display = 'block';
+            document.getElementById('status').innerText = "Incoming call from " + remoteUserId;
+        });
+
+        socket.on('call-accepted', async data => {
+            document.getElementById('status').innerText = "Call Connected!";
+            document.getElementById('btnEnd').style.display = 'block';
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription({
+                    type: 'answer',
+                    sdp: data.answer
+                }));
+            }
+        });
+
+        socket.on('ice-candidate', async data => {
+            try {
+                if (peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate({
+                        sdpMid: data.sdpMid,
+                        sdpMLineIndex: data.sdpMLineIndex,
+                        candidate: data.candidate
+                    }));
+                }
+            } catch (e) {
+                console.error("ICE error:", e);
+            }
+        });
+    }
+
+    async function setupPeerConnection() {
+        peerConnection = new RTCPeerConnection(rtcConfig);
+
+        // Capture Microphone
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+        // Play Received Audio
+        peerConnection.ontrack = event => {
+            const remoteAudio = document.getElementById('remoteAudio');
+            remoteAudio.srcObject = event.streams[0];
+        };
+
+        // Send Candidates
+        peerConnection.onicecandidate = event => {
+            if (event.candidate && remoteUserId) {
+                socket.emit('ice-candidate', {
+                    to: remoteUserId,
+                    sdpMid: event.candidate.sdpMid,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    candidate: event.candidate.candidate
+                });
+            }
+        };
+    }
+
+    async function startCall() {
+        remoteUserId = document.getElementById('targetUid').value.trim();
+        const myUid = document.getElementById('myUid').value.trim();
+        if (!remoteUserId) return alert("Enter Target ID!");
+
+        await setupPeerConnection();
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        socket.emit('call-user', {
+            to: remoteUserId,
+            offer: offer.sdp,
+            from: myUid,
+            callerName: myUid
+        });
+
+        document.getElementById('status').innerText = "Calling " + remoteUserId + "...";
+        document.getElementById('btnEnd').style.display = 'block';
+    }
+
+    async function acceptCall() {
+        document.getElementById('incomingSection').style.display = 'none';
+        document.getElementById('btnEnd').style.display = 'block';
+
+        await setupPeerConnection();
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription({
+            type: 'offer',
+            sdp: pendingOffer
+        }));
+
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        socket.emit('call-accepted', {
+            to: remoteUserId,
+            answer: answer.sdp
+        });
+
+        document.getElementById('status').innerText = "Call Connected!";
+    }
+
+    function endCall() {
+        if (peerConnection) peerConnection.close();
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        document.getElementById('btnEnd').style.display = 'none';
+        document.getElementById('incomingSection').style.display = 'none';
+        document.getElementById('status').innerText = "Call Ended";
+    }
+</script>
+
+</body>
+</html>
